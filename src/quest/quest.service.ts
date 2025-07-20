@@ -1,33 +1,33 @@
 
 import { Injectable } from '@nestjs/common';
 import { Quest, Prisma } from '@prisma/client';
-import { DataService } from './quest.data.service';
+import { QuestDataService } from './quest.data.service';
 
 @Injectable()
 export class QuestService {
-  constructor(private dataService: DataService) {}
+  constructor(private QuestdataService: QuestDataService) {}
 
    async createQuest(data: Prisma.QuestCreateInput): Promise<Quest> {
-    return this.dataService.createQuest(data);
+    return this.QuestdataService.create(data);
   }
 
-  async getAllQuests(): Promise<Quest[]> {
-    return this.dataService.getAllQuests();
+  async getAllQuests(search?: string): Promise<Quest[]> {
+    return this.QuestdataService.getAll(search);
   }
 
   async getQuestById(id: number): Promise<Quest | null> {
-    return this.dataService.getQuestById(id);
+    return this.QuestdataService.getById(id);
   }
 
   async updateQuest(
     id: number, 
     data: Prisma.QuestUpdateInput,
   ): Promise<Quest> {
-    return this.dataService.updateQuest(id, data);
+    return this.QuestdataService.update(id, data);
   }
 
   async deleteQuest(id: number): Promise<{ message: string }> {
-  await this.dataService.deleteQuest(id);
+  await this.QuestdataService.delete(id);
   return { message: `Квест успешно удалён` };
 }
 }

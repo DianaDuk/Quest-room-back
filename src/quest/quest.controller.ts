@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 import { QuestService } from './quest.service';
 import { Quest, Quest as QuestModel } from '@prisma/client';
@@ -23,8 +24,8 @@ export class QuestController {
   } 
 
   @Get()
-  async getAllQuests(): Promise<Quest[]> {
-    return this.questService.getAllQuests();
+  async getAllQuests(@Query('search') search?: string): Promise<Quest[]> {
+    return this.questService.getAllQuests(search);
   }
 
   @Get(':id')
