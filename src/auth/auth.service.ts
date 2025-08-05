@@ -1,67 +1,84 @@
-import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
-import { PrismaService } from "src/prisma.service";
+import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import * as bcrypt from 'bcryptjs'
 import { JwtService } from "@nestjs/jwt";
-import { RegisterDto } from "./dto/register.dto";
-import { LoginDto } from "./dto/login.dto";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+import { ISignInRequest, ISignInResponse, ISignUpRequest } from "./interfaces";
+import { AuthDataService } from "./auth-data.service";
+import { EmailService } from "src/email/email.service";
 
 @Injectable()
 export class AuthService {
     constructor(
-        private readonly prisma: PrismaService,
+        private readonly emailService: EmailService,
+        private readonly authDataService: AuthDataService,
         private readonly jwtService: JwtService,
     ) {}
 
-    async register(dto: RegisterDto) {
-        try{
-        const hashedPassword = await bcrypt.hash(dto.password, 10);
-
-        const user = await this.prisma.user.create({
-            data: {
-                email: dto.email,
-                name: dto.name,
-                surname: dto.surname,
-                phone: dto.phone,
-                password: hashedPassword,
-            },
-        });
-
-        return {
-            statusCode: 201,
-        };
-    } catch (error) {
-        if (
-            error instanceof PrismaClientKnownRequestError && 
-            error.code === 'P2002'
-        ) {
-            const target = error.meta?.target;
-            if (Array.isArray(target) && target.includes('email')) {
-                throw new BadRequestException ('Пользователь с таким email уже зарегистрирован');
-            }
+    async signUp(data: ISignUpRequest) {
+        const existingUser = await this.authDataService.findUserByEmail(data.email);
+        if(existingUser) {
+            throw new BadRequestException ('Пользователь с таким email уже зарегистрирован')
         }
 
-        console.error ('Registration error:', error);
-        throw new InternalServerErrorException('Не удалось зарегистрироваться')
-    }
-}
+        const hashedPassword = await bcrypt.hash(data.password, 10);
+        
+         await this.authDataService.createUser(data, hashedPassword);
 
-    async login(dto: LoginDto){
-        const user = await this.prisma.user.findUnique({
-            where: {email: dto.email},
-        });
+         await this.emailService.sendEmail(
+            data.email,
+            'Добро пожаловать!',
+            `Привет, ${data.name}! Ваш аккаунт успешно создан.`
+         );
+    } 
 
-        if(!user || !(await bcrypt.compare(dto.password, user.password))) {
+
+    async signIn(data: ISignInRequest): Promise<ISignInResponse>{
+        const user = await this.authDataService.findUserByEmail(data.email);
+
+        if(!user || !(await bcrypt.compare(data.password, user.password))) {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        const payload = {sub: user.id, role: user.role};
+        const payload = {sub: user.id};
 
         const token = await this.jwtService.signAsync(payload);
 
         return {
-            access_token: token,
-            statusCode: 200,
+            token: token,
+            user: {
+                name: user.name
+            }
         };
+    }
+
+    async sendPasswordResetEmail(email: string) {
+        const user = await this.authDataService.findUserByEmail(email);
+        if (!user) {
+            throw new BadRequestException ('Пользователь с таким email не найден');
+        }
+
+        const payload = {sub: user.id};
+        const token = await this.jwtService.signAsync(payload, {
+            expiresIn: '15m',
+        });
+
+        const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+
+        await this.emailService.sendEmail(
+            email,
+            'Сброс пароля',
+            `Перейдите по ссылке для сброса пароля: ${resetLink}`,
+        );
+    }
+
+    async resetPassword(token: string, newPassword: string) {
+        try{
+            const decoded = await this.jwtService.verifyAsync<{sub: number}>(token);
+            const userId = decoded.sub;
+
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+            await this.authDataService.updateUserPassword(userId, hashedPassword)
+        } catch (error) {
+            throw new BadRequestException ('Неверный или просроченный токен');
+        }
     }
 }

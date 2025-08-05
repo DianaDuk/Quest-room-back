@@ -1,7 +1,8 @@
 import { IsEmail, IsString, MinLength } from "class-validator";
+import { ISignUpRequest } from "../interfaces";
 
 
-export class RegisterDto {
+export class SignUpDto implements ISignUpRequest {
     @IsEmail()
     email: string;
 
